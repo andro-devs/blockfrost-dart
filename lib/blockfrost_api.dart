@@ -15,6 +15,6 @@ export 'src/scripts_service.dart';
 export 'src/transactions_service.dart';
 export 'src/utilities_service.dart';
 export 'src/ipfs_service.dart';
-export 'src/utils/blockfrost_signature_validator.dart';
+export 'src/utils/utils_exports.dart';
 
 
