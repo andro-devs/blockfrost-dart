@@ -1,0 +1,18 @@
+# https://dart.dev/guides/libraries/private-files
+
+# Don't commit the following files and directories created by pub
+.dart_tool/
+build/
+
+# Don't commit the API documentation directory created by dart doc
+doc/api/
+
+# Don't commit files and directories created by other development environments
+## IntelliJ
+*.iml
+*.ipr
+*.iws
+.idea/
+
+## Mac
+.DS_Store
