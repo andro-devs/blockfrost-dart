@@ -16,7 +16,8 @@
 
 ## Getting started
 
-To use this SDK, you first need login into to [blockfrost.io](https://blockfrost.io) create your project to retrive your API token.
+To use this SDK, you first need login into to [blockfrost.io](https://blockfrost.io) create your
+project to retrieve your API token.
 
 <img src="https://i.imgur.com/smY12ro.png">
 
@@ -31,29 +32,33 @@ Using the SDK is pretty straight-forward as you can see from the following examp
 ```dart
 import 'package:blockfrost_api/blockfrost_api.dart';
 
-void main() async  {
+void main() async {
+  String projectId = "<insert project id>";
 
-	String projectId = "<insert project id>";
-		
-	String out;
-	
-	try
-	{
-		BlockService service = BlockService(Service.networkCardanoMainnet, projectId);
-    	
-		BlockContent block = await service.getLatestBlock();
-			  	
-		out = block.hash;
-	}	
-	
-	catch(e)
-	{
-		out = e.toString();
-	}
-	
-	print(out);
+  String out;
 
+  try {
+    BlockService service = BlockService(Service.networkCardanoMainnet, projectId);
+
+    BlockContent block = await service.getLatestBlock();
+
+    out = block.hash;
+  }
+
+  catch (e) {
+    out = e.toString();
+  }
+
+  print(out);
 }
+```
+
+# How to run the unit tests?
+
+## Note: Replace the placeholders by values from https://blockfrost.io/dashboard
+
+```
+PROJECT_ID_MAINNET="[YOUR_PROJECT_ID_MAINNET_HERE]" PROJECT_ID_IPFS="YOUR_PROJECT_IPFS_ID" dart run test test/
 ```
 
 
