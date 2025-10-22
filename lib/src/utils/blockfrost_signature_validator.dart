@@ -1,30 +1,32 @@
 import 'dart:convert';
 
+import 'package:blockfrost_api/src/utils/signature_validation_exception.dart';
 import 'package:blockfrost_api/src/utils/signature_validator.dart';
 import 'package:crypto/crypto.dart';
-
-const int maxToleranceSeconds = 60;
 
 /// Adapter class which implements the validator interface to validate the blockfrost webhook signature.
 class BlockfrostSignatureValidator implements SignatureValidator {
   @override
   bool validate({
-    required String signatureHeader,
     required String requestPayload,
+    required String signatureHeader,
     required String secretAuthToken,
+    int maxToleranceSeconds = defaultMaxToleranceSeconds,
   }) {
     return _validateSignature(
-      signatureHeader: signatureHeader,
       requestPayload: requestPayload,
+      signatureHeader: signatureHeader,
       secretAuthToken: secretAuthToken,
+      maxToleranceSeconds: maxToleranceSeconds,
     );
   }
 }
 
 bool _validateSignature({
+  required String requestPayload,
   required String signatureHeader,
-  required String requestPayload, // JSON payload as raw string
   required String secretAuthToken,
+  required int maxToleranceSeconds,
   int? currentUnixTime,
 }) {
   // Parse the timestamp and signature from the header
@@ -46,16 +48,22 @@ bool _validateSignature({
   }
 
   if (timestampString == null || providedSignatures.isEmpty) {
-    print('Validation Failed: Missing timestamp (t) or (v1) signature.');
-    return false;
+    throw SignatureValidationException(
+      "Invalid signature header format.",
+      header: signatureHeader,
+      payload: requestPayload,
+    );
   }
 
   final int timestamp;
   try {
     timestamp = int.parse(timestampString);
   } catch (e) {
-    print('Validation Failed: Invalid timestamp format.');
-    return false;
+    throw SignatureValidationException(
+      "Invalid timestamp format.",
+      header: signatureHeader,
+      payload: requestPayload,
+    );
   }
 
   // Prepare the signature_payload (timestamp.payload)
@@ -74,25 +82,24 @@ bool _validateSignature({
       providedSignatures.any((sig) => sig == expectedSignature);
 
   if (!signatureMatch) {
-    print('Verification Failed: Signatures do not match.');
-    print('Expected: $expectedSignature');
-    print('Provided: $providedSignatures');
-    return false;
+    throw SignatureValidationException(
+      "No signature matches the expected signature for the payload.",
+      header: signatureHeader,
+      payload: requestPayload,
+    );
   }
 
   // Check timestamp tolerance (prevent replay attacks)
-  // Note: we might also inject time for testing purposes
-  final currentTimestamp = currentUnixTime ??
-      (DateTime.now().millisecondsSinceEpoch ~/ 1000); // Unix time in seconds
-
-  print("currentTimestamp: $currentTimestamp");
+  // Note: currentUnixTime can be injected for testing purposes
+  final currentTimestamp =
+      currentUnixTime ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000);
   final timeDifference = (currentTimestamp - timestamp).abs();
-  print("timeDifference: $timeDifference");
-
   if (timeDifference > maxToleranceSeconds) {
-    print(
-        'Validation Failed: Timestamp too old/far ($timeDifference s difference).');
-    return false;
+    throw SignatureValidationException(
+      "Signature's timestamp is outside of the time tolerance.",
+      header: signatureHeader,
+      payload: requestPayload,
+    );
   }
   return true;
 }
@@ -100,16 +107,18 @@ bool _validateSignature({
 /// TESTING ACCESSOR: used only by unit test to access the private method
 class TestBlockfrostValidatorAccessor {
   bool callValidateSignature({
-    required String signatureHeader,
     required String requestPayload,
+    required String signatureHeader,
     required String secretAuthToken,
     required int currentUnixTime,
+    int maxToleranceSeconds = defaultMaxToleranceSeconds,
   }) {
     return _validateSignature(
-      signatureHeader: signatureHeader,
       requestPayload: requestPayload,
+      signatureHeader: signatureHeader,
       secretAuthToken: secretAuthToken,
       currentUnixTime: currentUnixTime,
+      maxToleranceSeconds: maxToleranceSeconds,
     );
   }
 }

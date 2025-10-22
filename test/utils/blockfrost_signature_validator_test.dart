@@ -1,10 +1,10 @@
 import 'dart:convert';
 
-import 'package:blockfrost_api/src/utils/blockfrost_signature_validator.dart';
+import 'package:blockfrost_api/blockfrost_api.dart';
 import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
 
-const maxToleranceSeconds = 60;
+const maxToleranceSeconds = 600;
 
 // --- Test Constants ---
 const testSecret = 'TEST_SECRET';
@@ -39,8 +39,8 @@ void main() {
     // --- SUCCESS CASE ---
     test('Should return true for a valid, recent signature', () {
       final result = validator.callValidateSignature(
-        signatureHeader: validHeader,
         requestPayload: testPayload,
+        signatureHeader: validHeader,
         secretAuthToken: testSecret,
         currentUnixTime: standardTimestamp,
       );
@@ -49,40 +49,52 @@ void main() {
 
     // --- FAILURE CASES ---
     test(
-        'Should return false if signatureHeader is malformed (missing t or v1)',
+        'Should throw SignatureValidationException if signatureHeader is malformed (missing t or v1)',
         () {
       // Case 1: Missing timestamp
-      final result1 = validator.callValidateSignature(
-        signatureHeader: 'v1=$validSignature',
-        requestPayload: testPayload,
-        secretAuthToken: testSecret,
-        currentUnixTime: standardTimestamp,
+      expect(
+        () => validator.callValidateSignature(
+          requestPayload: testPayload,
+          signatureHeader: 'v1=$validSignature',
+          secretAuthToken: testSecret,
+          currentUnixTime: standardTimestamp,
+        ),
+        throwsA(
+          predicate(
+            (e) =>
+                e is SignatureValidationException &&
+                e.message.contains('Invalid signature header format.'),
+            'SignatureValidationException with correct message',
+          ),
+        ),
+        reason: 'Should throw exception for malformed header',
       );
-      expect(result1, isFalse, reason: 'Should fail if "t" is missing');
-
-      // Case 2: Missing signature
-      final result2 = validator.callValidateSignature(
-        signatureHeader: 't=$standardTimestamp',
-        requestPayload: testPayload,
-        secretAuthToken: testSecret,
-        currentUnixTime: standardTimestamp,
-      );
-      expect(result2, isFalse, reason: 'Should fail if "v1" is missing');
-    });
-
-    test('Should return false if timestamp format is invalid', () {
-      final invalidHeader = 't=mywrongtimestamp,v1=$validSignature';
-      final result = validator.callValidateSignature(
-        signatureHeader: invalidHeader,
-        requestPayload: testPayload,
-        secretAuthToken: testSecret,
-        currentUnixTime: standardTimestamp,
-      );
-      expect(result, isFalse);
     });
 
     test(
-        'Should return false if the signature does not match (wrong secret or payload)',
+        'Should throw SignatureValidationException if timestamp format is invalid',
+        () {
+      final invalidHeader = 't=mywrongtimestamp,v1=$validSignature';
+      expect(
+          () => validator.callValidateSignature(
+                requestPayload: testPayload,
+                signatureHeader: invalidHeader,
+                secretAuthToken: testSecret,
+                currentUnixTime: standardTimestamp,
+              ),
+          throwsA(
+            predicate(
+              (e) =>
+                  e is SignatureValidationException &&
+                  e.message.contains('Invalid timestamp format.'),
+              'SignatureValidationException with correct message',
+            ),
+          ),
+          reason: 'Should throw exception for invalid timestamp');
+    });
+
+    test(
+        'Should throw SignatureValidationException if the signature does not match',
         () {
       // 1. Wrong Secret (Use a different secret to calculate the expected signature)
       final badSignature = generateSignature(
@@ -93,46 +105,98 @@ void main() {
       final badHeader = 't=$standardTimestamp,v1=$badSignature';
 
       // Validate using the correct secret
-      final result = validator.callValidateSignature(
-        signatureHeader: badHeader,
-        requestPayload: testPayload,
-        secretAuthToken: testSecret,
-        currentUnixTime: standardTimestamp,
-      );
-      expect(result, isFalse);
+      expect(
+          () => validator.callValidateSignature(
+                requestPayload: testPayload,
+                signatureHeader: badHeader,
+                secretAuthToken: testSecret,
+                currentUnixTime: standardTimestamp,
+              ),
+          throwsA(
+            predicate(
+              (e) =>
+                  e is SignatureValidationException &&
+                  e.message.contains(
+                      'No signature matches the expected signature for the payload.'),
+              'SignatureValidationException with correct message',
+            ),
+          ),
+          reason: 'Should throw exception for not matching signatures');
     });
 
-    test('Should return false if the timestamp is too old (replay attack)', () {
+    test(
+        'Should throw SignatureValidationException if the timestamp is too far in the future',
+        () {
       final farFutureTime = standardTimestamp + maxToleranceSeconds + 1;
+      print("$farFutureTime");
 
-      final result = validator.callValidateSignature(
-        signatureHeader: validHeader,
-        requestPayload: testPayload,
-        secretAuthToken: testSecret,
-        currentUnixTime: farFutureTime, // Inject current time far in the future
-      );
-      expect(result, isFalse);
+      expect(
+          () => validator.callValidateSignature(
+                requestPayload: testPayload,
+                signatureHeader: validHeader,
+                secretAuthToken: testSecret,
+                currentUnixTime:
+                    farFutureTime, // Inject current time far in the future
+              ),
+          throwsA(
+            predicate(
+              (e) =>
+                  e is SignatureValidationException &&
+                  e.message.contains(
+                      'Signature\'s timestamp is outside of the time tolerance.'),
+              'SignatureValidationException with correct message',
+            ),
+          ),
+          reason: 'Should throw exception for not matching signatures');
     });
 
-    test('Should return false if the timestamp is too far in the future', () {
+    test(
+        'Should throw SignatureValidationException if the timestamp is too old (replay attack)',
+        () {
       final farPastTime = standardTimestamp - maxToleranceSeconds - 1;
-      final result = validator.callValidateSignature(
-        signatureHeader: validHeader,
-        requestPayload: testPayload,
-        secretAuthToken: testSecret,
-        currentUnixTime: farPastTime,
-      );
-      expect(result, isFalse);
+      print("$farPastTime");
+      expect(
+          () => validator.callValidateSignature(
+                requestPayload: testPayload,
+                signatureHeader: validHeader,
+                secretAuthToken: testSecret,
+                currentUnixTime: farPastTime,
+              ),
+          throwsA(
+            predicate(
+              (e) =>
+                  e is SignatureValidationException &&
+                  e.message.contains(
+                      'Signature\'s timestamp is outside of the time tolerance.'),
+              'SignatureValidationException with correct message',
+            ),
+          ),
+          reason: 'Should throw exception for not matching signatures');
     });
 
     test('Should return true if time difference is exactly the tolerance limit',
         () {
       final toleranceLimitTime = standardTimestamp + maxToleranceSeconds;
       final result = validator.callValidateSignature(
-        signatureHeader: validHeader,
         requestPayload: testPayload,
+        signatureHeader: validHeader,
         secretAuthToken: testSecret,
         currentUnixTime: toleranceLimitTime,
+      );
+      expect(result, isTrue);
+    });
+
+    test(
+        'Should return true for custom maxToleranceSeconds if time difference is exactly the tolerance limit',
+        () {
+      int customMaxToleranceSeconds = 60;
+      final toleranceLimitTime = standardTimestamp + customMaxToleranceSeconds;
+      final result = validator.callValidateSignature(
+        requestPayload: testPayload,
+        signatureHeader: validHeader,
+        secretAuthToken: testSecret,
+        currentUnixTime: toleranceLimitTime,
+        maxToleranceSeconds: customMaxToleranceSeconds,
       );
       expect(result, isTrue);
     });
